@@ -16,10 +16,13 @@
 import urllib
 import urllib2
 import urlparse
+
 from lxml import etree
+
 
 def _normalize_whitespace(s):
     return ' '.join(s.split())
+
 
 def _extract_text_help(root, acc):
     if root.text is not None and root.text.strip():
@@ -30,8 +33,10 @@ def _extract_text_help(root, acc):
             acc.append(_normalize_whitespace(child.tail.strip()))
     return acc
 
+
 def _extract_text(root):
-    return ' '.join(_extract_text_help(root,[]))
+    return ' '.join(_extract_text_help(root, []))
+
 
 def _extract(elt, doc):
     """This function takes a given DOM node 'elt' and attempts to interpret
@@ -46,14 +51,17 @@ def _extract(elt, doc):
             if target is not None: return _extract(target, doc)
         else:
             up = urlparse.urlparse(href)
-            remote_doc = enter(urlparse.urlunparse((up.scheme, up.netloc, up.path, up.params, up.query, '')))
+            remote_doc = enter(urlparse.urlunparse((up.scheme, up.netloc,
+                    up.path, up.params, up.query, '')))
             if up.fragment:
-                target = remote_doc._doc.getroot().find(".//*[@id='%s']" % up.fragment)
+                target = remote_doc._doc.getroot().find(".//*[@id='%s']" %
+                        up.fragment)
                 if target is not None: return _extract(target, remote_doc)
             if len(remote_doc.objects) == 1: return remote_doc.objects[0]
             return _extract(remote_doc._doc.getroot(), remote_doc)
     if tag == 'img': return elt.attrib['src']
     return _extract_text(elt)
+
 
 def _value_of(doc, fragment=''):
     if fragment:
@@ -63,16 +71,17 @@ def _value_of(doc, fragment=''):
     if len(doc.objects) > 0: return doc.objects
     return _extract(doc._doc.getroot(), doc)
 
+
 class Link(object):
     """Links are basically a representation of HTML <a> tags. The main
     thing you can do with a Link is to follow it."""
+
     def __init__(self, elt, doc):
         self._elt = elt
         self._doc = doc
 
     def __repr__(self):
         return "<Link %s at 0x%x>" % (self._elt.attrib['href'], id(self))
-
 
     def follow(self):
         href = self._elt.attrib['href']
@@ -88,6 +97,7 @@ class Link(object):
             remote_doc = enter(resolved_base)
             return _value_of(remote_doc, up.fragment)
 
+
 class Form(object):
     """Forms are a representation of an HTML <form> tag. Then main thing
     you can do with a form is to 'submit' one by providing a dictionary
@@ -97,6 +107,7 @@ class Form(object):
     at this point. The other useful thing you can do with a Form is to ask
     it for its .params field, which returns a list of the input names
     provided."""
+
     def __init__(self, elt, doc):
         self._elt = elt
         self._doc = doc
@@ -137,7 +148,8 @@ class Form(object):
     def submit(self, args={}):
         action = urlparse.urljoin(self._doc._url, self._elt.attrib['action'])
         params = self._build_params(args)
-        if 'method' not in self._elt.attrib or self._elt.attrib['method'] == 'GET':
+        if ('method' not in self._elt.attrib or
+                self._elt.attrib['method'] == 'GET'):
             up = urlparse.urlparse(action)
             if up.params: allparams = "%s&%s" % (up.params, params)
             else: allparams = params
@@ -150,6 +162,7 @@ class Form(object):
             print "OK"
             return MicrodataDocument(f, action)
 
+
 class MicrodataObject(object):
     """This represents a particular semantic object, i.e. something identified
     by an @itemscope attribute. MicrodataObjects have several useful properties
@@ -161,6 +174,7 @@ class MicrodataObject(object):
     There is also a shortcut method .submit() that will submit the first
     contained form with the given link relation (as notated by the @data-rel
     attribute)."""
+
     def __init__(self, root, doc):
         self._root = root
         self._doc = doc
@@ -192,7 +206,7 @@ class MicrodataObject(object):
             else:
                 self._orphan_forms.append(Form(elt, self._doc))
         if 'itemscope' in elt.attrib: return
-                
+
         for child in elt.getchildren():
             self._dfs_form_help(child)
 
@@ -225,9 +239,14 @@ class MicrodataObject(object):
         if self._propmap is None: self._build_propmap()
         return self._propmap
 
-    def __len__(self): return self._get_propmap().__len__()
-    def __contains__(self,x): return self._get_propmap().__contains__(x)
-    def __iter__(self): return self._get_propmap().__iter__()
+    def __len__(self):
+        return self._get_propmap().__len__()
+
+    def __contains__(self, x):
+        return self._get_propmap().__contains__(x)
+
+    def __iter__(self):
+        return self._get_propmap().__iter__()
 
     def get_property(self, prop, raw=False, allow_multi=True):
         propmap = self._get_propmap()
@@ -240,7 +259,7 @@ class MicrodataObject(object):
             return None
         vals = propmap[prop]
         if not raw:
-            vals = map(lambda v : _extract(v, self._doc), vals)
+            vals = map(lambda v: _extract(v, self._doc), vals)
         if len(vals) == 0: return None
         if len(vals) == 1 or not allow_multi: return vals[0]
         return vals
@@ -272,16 +291,17 @@ class MicrodataObject(object):
         if rel not in linkmap: return None
         links = linkmap[rel]
         if raw:
-            return map(lambda l : l._elt, links)
+            return map(lambda l: l._elt, links)
         if len(links) == 0: return None
         if len(links) == 1 or not allow_multi: return links[0]
         return out
-    
+
     def __getitem__(self, name):
         return self.get_property(name, raw=False, allow_multi=False)
 
     def __getattr__(self, name):
         return self.get_property(name, raw=False, allow_multi=False)
+
 
 class MicrodataDocument:
     """MicrodataDocuments represent a client application state, usually the
@@ -297,6 +317,7 @@ class MicrodataDocument:
       .follow(rel) = follow the first Link with the given link relation
       .submit(rel, args) = submit the first Form with the given link relation,
         using the 'args' dictionary to supply values for the input elements"""
+
     def __init__(self, f, url):
         parser = etree.HTMLParser()
         self._doc = etree.parse(f, parser)
@@ -326,19 +347,20 @@ class MicrodataDocument:
     orphan_forms = property(_get_orphan_forms)
 
     def _get_all_forms(self):
-        return map(lambda elt : Form(elt, self),
+        return map(lambda elt: Form(elt, self),
                    self._doc.getroot().findall(".//form"))
     allforms = property(_get_all_forms)
 
     def follow(self, rel):
         return self.links[rel][0].follow()
-    
+
     def submit(self, rel, args):
         return self.forms[rel][0].submit(args)
-    
+
     def get_toplevel_objects(self):
         return self._dfs_help(self._doc.getroot(), [])
     objects = property(get_toplevel_objects)
+
 
 def enter(url):
     print "GET", url, "...",
